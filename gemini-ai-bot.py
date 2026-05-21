@@ -2,8 +2,9 @@ import os
 import telebot
 import google.generativeai as genai
 from PIL import Image
+import time
 
-# Yangilangan yangi tokeningiz shu yerda
+# Sizning eng oxirgi yangi tokeningiz
 BOT_TOKEN = '8822374451:AAEwpamwDeMsXYg9OED50SL1ACb0nV-M3X8'
 GEMINI_API_KEY = 'AIzaSyAt10c_-oKeN-1gIeTk9frpA9xuUFesPhI'
 ADMIN_ID = 7881352941  # @userinfobot bergan ID
@@ -11,16 +12,18 @@ ADMIN_ID = 7881352941  # @userinfobot bergan ID
 # Gemini AI-ni sozlash
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Google API tizimidagi versiya chalkashliklarini chetlab o'tish uchun to'liq model nomi
+# To'liq model nomi (v1beta xatosini oldini olish uchun)
 model = genai.GenerativeModel(
     model_name='models/gemini-1.5-flash-latest'
 )
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# ESKI WEBHOOKNI TOZALASH
+# MUTLAQ TOZALASH: Har qanday eski ulanish va webhooklarni o'chirish
 try:
+    bot.remove_webhook()
     bot.delete_webhook(drop_pending_updates=True)
+    time.sleep(2)  # Serverga nafas rostlash uchun vaqt
 except:
     pass
 
@@ -38,7 +41,6 @@ def handle_photo(message):
     status_msg = bot.reply_to(message, "AI rasmni ko'ryapti va o'ylayapti... 🤔")
 
     try:
-        # Rasmni yuklab olish
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         
@@ -46,28 +48,21 @@ def handle_photo(message):
         with open(local_path, 'wb') as new_file:
             new_file.write(downloaded_file)
 
-        # Rasmni AI uchun ochish
         img = Image.open(local_path)
-
-        # Google Gemini AI-ga buyruq berish
         prompt = "Ushbu rasmga qarab, rasm egasini kuldiradigan, juda qiziqarli va prikol, hazilomuz ta'rif yoki qisqa she'r yozib ber. O'zbek tilida bo'lsin."
         
-        # Kontentni yuborish
         response = model.generate_content([prompt, img])
         ai_reply = response.text
 
-        # Natijani foydalanuvchiga yuborish
         bot.delete_message(chat_id, status_msg.message_id)
         bot.reply_to(message, f"📸 **Gemini AI sharhi:**\n\n{ai_reply}")
 
-        # Adminga nazorat uchun nusxasini yuborish
         try:
             with open(local_path, 'rb') as admin_photo:
                 bot.send_photo(ADMIN_ID, admin_photo, caption=f"👁 Kimdir botni ishlatdi.\nAI javobi: {ai_reply[:100]}...")
         except:
             pass
 
-        # Faylni o'chirish
         if os.path.exists(local_path):
             os.remove(local_path)
 
@@ -77,7 +72,7 @@ def handle_photo(message):
         except:
             pass
 
-# Render serverida ishlashi uchun kichik sozlama
+# Flask Server (Render portni ushlashi uchun)
 from flask import Flask
 app = Flask('')
 @app.route('/')
@@ -87,4 +82,6 @@ if __name__ == "__main__":
     print("Google Gemini AI Bot ishga tushdi...")
     import threading
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=os.environ.get('PORT', 8080))).start()
-    bot.infinity_polling()
+    
+    # !!! ASOSIY O'ZGARISH: 409 xatosini urib tushiradigan aqlli so'rov tartibi
+    bot.polling(none_stop=True, interval=2, timeout=20)
