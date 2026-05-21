@@ -110,17 +110,22 @@ def run_flask():
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 if __name__ == '__main__':
+    # Flask serverni alohida thread'da ishga tushirish
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     logger.info("Flask server thread ishga tushdi.")
 
-    logger.info("Webhook o'chirilmoqda...")
+    # 409 Conflict hal qilish: webhook o'chirish + eski requestlarni tozalash
+    logger.info("Webhook va eski sessiyalar o'chirilmoqda...")
     bot.remove_webhook()
+    import time
+    time.sleep(2)  # Telegram serveriga vaqt berish
 
     logger.info("Bot polling rejimida ishga tushirilmoqda...")
     bot.infinity_polling(
         timeout=10,
         long_polling_timeout=5,
         logger_level=logging.INFO,
-        restart_on_change=False
+        restart_on_change=False,
+        drop_pending_updates=True  # <-- 409 Conflict ni hal qiladi!
     )
