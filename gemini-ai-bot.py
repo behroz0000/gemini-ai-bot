@@ -2,22 +2,23 @@ import os
 import logging
 import threading
 import requests
-import google.generativeai as genai
+import base64
 import telebot
 from flask import Flask
 
-os.environ["GOOGLE_API_VERSION"] = "v1"
-
+# ===================== SOZLAMALAR =====================
 BOT_TOKEN = '8822374451:AAH44tO2fOxgLgxNLw_pIazWFh1u0NTb82c'
 GEMINI_API_KEY = 'AIzaSyAt10c_-oKeN-1gIeTk9frpA9xuUFesPhI'
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
 
+# ===================== LOGGING =====================
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
-
+# ===================== TELEGRAM BOT =====================
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode=None)
+
+# ===================== FLASK SERVER =====================
 app = Flask(__name__)
 
 @app.route('/')
@@ -28,9 +29,11 @@ def home():
 def health():
     return "OK", 200
 
+# ===================== DOWNLOADS PAPKASI =====================
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+# ===================== YORDAMCHI FUNKSIYALAR =====================
 def download_photo(file_info, save_path):
     file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
     response = requests.get(file_url, timeout=30)
@@ -39,24 +42,39 @@ def download_photo(file_info, save_path):
         f.write(response.content)
 
 def analyze_image_with_gemini(image_path):
+    # Rasmni base64 ga o'girish
     with open(image_path, 'rb') as f:
-        image_data = f.read()
+        image_data = base64.b64encode(f.read()).decode('utf-8')
 
-    image_part = {
-        "mime_type": "image/jpeg",
-        "data": image_data
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {
+                        "text": (
+                            "Siz o'zbek tilida ijodiy va kulgili sharhlar yozuvchi AI assistantsiz. "
+                            "Ushbu rasmga qarab, o'zbek tilida qisqa, qiziqarli va hazilomuz bir sharh yozing. "
+                            "Sharh 2-4 jumladan iborat bo'lsin, jonli va o'qimishli bo'lsin. "
+                            "Faqat sharhni yozing, boshqa narsa yozmang."
+                        )
+                    },
+                    {
+                        "inline_data": {
+                            "mime_type": "image/jpeg",
+                            "data": image_data
+                        }
+                    }
+                ]
+            }
+        ]
     }
 
-    prompt = (
-        "Siz o'zbek tilida ijodiy va kulgili sharhlar yozuvchi AI assistantsiz. "
-        "Ushbu rasmga qarab, o'zbek tilida qisqa, qiziqarli va hazilomuz bir sharh yozing. "
-        "Sharh 2-4 jumladan iborat bo'lsin, jonli va o'qimishli bo'lsin. "
-        "Faqat sharhni yozing, boshqa narsa yozmang."
-    )
+    response = requests.post(GEMINI_URL, json=payload, timeout=30)
+    response.raise_for_status()
+    result = response.json()
+    return result['candidates'][0]['content']['parts'][0]['text'].strip()
 
-    response = model.generate_content([prompt, image_part])
-    return response.text.strip()
-
+# ===================== BOT HANDLERLAR =====================
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     text = (
@@ -88,8 +106,8 @@ def handle_photo(message):
         bot.reply_to(message, f"🤖 {comment}")
 
     except requests.exceptions.RequestException as e:
-        logger.error(f"Rasm yuklashda xato: {e}")
-        bot.reply_to(message, "❌ Rasmni yuklab bo'lmadi. Iltimos, qayta urinib ko'ring.")
+        logger.error(f"So'rov xatosi: {e}")
+        bot.reply_to(message, "❌ Xatolik yuz berdi. Iltimos, qayta urinib ko'ring.")
 
     except Exception as e:
         logger.error(f"Xato turi: {type(e).__name__}, xabar: {str(e)}")
@@ -104,22 +122,22 @@ def handle_photo(message):
 def handle_other(message):
     bot.reply_to(message, "📸 Iltimos, menga rasm yuboring. Faqat rasmlarga sharh yoza olaman!")
 
+# ===================== FLASK SERVERNI ISHGA TUSHIRISH =====================
 def run_flask():
     port = int(os.environ.get('PORT', 10000))
     logger.info(f"Flask server {port}-portda ishga tushirilmoqda...")
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
+# ===================== ASOSIY FUNKSIYA =====================
 if __name__ == '__main__':
-    # Flask serverni alohida thread'da ishga tushirish
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     logger.info("Flask server thread ishga tushdi.")
 
-    # 409 Conflict hal qilish: webhook o'chirish + eski requestlarni tozalash
-    logger.info("Webhook va eski sessiyalar o'chirilmoqda...")
-    bot.remove_webhook()
     import time
-    time.sleep(2)  # Telegram serveriga vaqt berish
+    logger.info("Webhook o'chirilmoqda...")
+    bot.remove_webhook()
+    time.sleep(2)
 
     logger.info("Bot polling rejimida ishga tushirilmoqda...")
     bot.infinity_polling(
@@ -127,5 +145,5 @@ if __name__ == '__main__':
         long_polling_timeout=5,
         logger_level=logging.INFO,
         restart_on_change=False,
-        drop_pending_updates=True  # <-- 409 Conflict ni hal qiladi!
+        drop_pending_updates=True
     )
