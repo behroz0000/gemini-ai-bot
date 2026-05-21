@@ -4,20 +4,17 @@ import threading
 import requests
 import base64
 import time
-import telebot
 from flask import Flask
 
 # ===================== SOZLAMALAR =====================
 BOT_TOKEN = '8822374451:AAH44tO2fOxgLgxNLw_pIazWFh1u0NTb82c'
 GEMINI_API_KEY = 'AIzaSyAt10c_-oKeN-1gIeTk9frpA9xuUFesPhI'
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+TG = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 # ===================== LOGGING =====================
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-# ===================== TELEGRAM BOT =====================
-bot = telebot.TeleBot(BOT_TOKEN, parse_mode=None)
 
 # ===================== FLASK SERVER =====================
 app = Flask(__name__)
@@ -34,114 +31,155 @@ def health():
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-# ===================== YORDAMCHI FUNKSIYALAR =====================
-def download_photo(file_info, save_path):
-    file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
-    response = requests.get(file_url, timeout=30)
-    response.raise_for_status()
-    with open(save_path, 'wb') as f:
-        f.write(response.content)
+# ===================== TELEGRAM FUNKSIYALARI =====================
+def tg_send(chat_id, text):
+    try:
+        requests.post(f"{TG}/sendMessage", json={"chat_id": chat_id, "text": text}, timeout=10)
+    except Exception as e:
+        logger.error(f"sendMessage xato: {e}")
 
-def analyze_image_with_gemini(image_path):
+def tg_action(chat_id, action="typing"):
+    try:
+        requests.post(f"{TG}/sendChatAction", json={"chat_id": chat_id, "action": action}, timeout=5)
+    except:
+        pass
+
+def tg_get_file(file_id):
+    resp = requests.get(f"{TG}/getFile", params={"file_id": file_id}, timeout=10)
+    return resp.json()["result"]["file_path"]
+
+def tg_download(file_path, save_path):
+    url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+    resp = requests.get(url, timeout=30)
+    resp.raise_for_status()
+    with open(save_path, 'wb') as f:
+        f.write(resp.content)
+
+# ===================== GEMINI =====================
+def analyze_image(image_path):
     with open(image_path, 'rb') as f:
         image_data = base64.b64encode(f.read()).decode('utf-8')
 
     payload = {
-        "contents": [
-            {
-                "parts": [
-                    {
-                        "text": (
-                            "Siz o'zbek tilida ijodiy va kulgili sharhlar yozuvchi AI assistantsiz. "
-                            "Ushbu rasmga qarab, o'zbek tilida qisqa, qiziqarli va hazilomuz bir sharh yozing. "
-                            "Sharh 2-4 jumladan iborat bo'lsin, jonli va o'qimishli bo'lsin. "
-                            "Faqat sharhni yozing, boshqa narsa yozmang."
-                        )
-                    },
-                    {
-                        "inline_data": {
-                            "mime_type": "image/jpeg",
-                            "data": image_data
-                        }
-                    }
-                ]
-            }
-        ]
+        "contents": [{
+            "parts": [
+                {"text": (
+                    "Siz o'zbek tilida ijodiy va kulgili sharhlar yozuvchi AI assistantsiz. "
+                    "Ushbu rasmga qarab, o'zbek tilida qisqa, qiziqarli va hazilomuz bir sharh yozing. "
+                    "Sharh 2-4 jumladan iborat bo'lsin, jonli va o'qimishli bo'lsin. "
+                    "Faqat sharhni yozing, boshqa narsa yozmang."
+                )},
+                {"inline_data": {"mime_type": "image/jpeg", "data": image_data}}
+            ]
+        }]
     }
 
-    response = requests.post(GEMINI_URL, json=payload, timeout=30)
-    response.raise_for_status()
-    result = response.json()
-    return result['candidates'][0]['content']['parts'][0]['text'].strip()
+    resp = requests.post(GEMINI_URL, json=payload, timeout=40)
+    resp.raise_for_status()
+    return resp.json()['candidates'][0]['content']['parts'][0]['text'].strip()
 
-# ===================== BOT HANDLERLAR =====================
-@bot.message_handler(commands=['start', 'help'])
-def send_welcome(message):
-    text = (
-        "👋 Salom! Men rasm tahlil qiluvchi botman.\n\n"
-        "📸 Menga istalgan rasm yuboring — men unga o'zbek tilida "
-        "qiziqarli va kulgili sharh yozib beraman! 😄"
-    )
-    bot.reply_to(message, text)
+# ===================== UPDATE QAYTA ISHLASH =====================
+def handle_update(update):
+    message = update.get("message", {})
+    chat_id = message.get("chat", {}).get("id")
+    if not chat_id:
+        return
 
-@bot.message_handler(content_types=['photo'])
-def handle_photo(message):
-    chat_id = message.chat.id
-    img_path = None
+    text = message.get("text", "")
+    photos = message.get("photo", [])
 
+    if text in ["/start", "/help"]:
+        tg_send(chat_id,
+            "👋 Salom! Men rasm tahlil qiluvchi botman.\n\n"
+            "📸 Menga istalgan rasm yuboring — men unga o'zbek tilida "
+            "qiziqarli va kulgili sharh yozib beraman! 😄"
+        )
+        return
+
+    if photos:
+        img_path = None
+        try:
+            tg_action(chat_id)
+            tg_send(chat_id, "🔍 Rasm tahlil qilinmoqda, bir oz kuting...")
+
+            photo = photos[-1]
+            file_path = tg_get_file(photo["file_id"])
+            img_path = os.path.join(DOWNLOAD_DIR, f"{photo['file_id']}.jpg")
+            tg_download(file_path, img_path)
+
+            comment = analyze_image(img_path)
+            tg_send(chat_id, f"🤖 {comment}")
+
+        except Exception as e:
+            logger.error(f"Xato: {type(e).__name__}: {e}")
+            tg_send(chat_id, f"⚠️ Xato: {type(e).__name__}: {str(e)[:200]}")
+        finally:
+            if img_path and os.path.exists(img_path):
+                os.remove(img_path)
+        return
+
+    tg_send(chat_id, "📸 Iltimos, menga rasm yuboring. Faqat rasmlarga sharh yoza olaman!")
+
+# ===================== POLLING =====================
+def polling_loop():
+    offset = None
+
+    # Boshlashda eski sessiyalarni tozalash
     try:
-        bot.send_chat_action(chat_id, 'typing')
-        bot.reply_to(message, "🔍 Rasm tahlil qilinmoqda, bir oz kuting...")
-
-        photo = message.photo[-1]
-        file_info = bot.get_file(photo.file_id)
-
-        img_path = os.path.join(DOWNLOAD_DIR, f"{photo.file_id}.jpg")
-        download_photo(file_info, img_path)
-        logger.info(f"Rasm yuklandi: {img_path}")
-
-        comment = analyze_image_with_gemini(img_path)
-        logger.info(f"Gemini javobi: {comment}")
-
-        bot.reply_to(message, f"🤖 {comment}")
-
-    except requests.exceptions.RequestException as e:
-        logger.error(f"So'rov xatosi: {e}")
-        bot.reply_to(message, "❌ Xatolik yuz berdi. Iltimos, qayta urinib ko'ring.")
-
+        requests.post(f"{TG}/deleteWebhook", json={"drop_pending_updates": True}, timeout=10)
+        logger.info("Webhook o'chirildi, eski updatelar tozalandi.")
+        time.sleep(3)
     except Exception as e:
-        logger.error(f"Xato turi: {type(e).__name__}, xabar: {str(e)}")
-        bot.reply_to(message, f"⚠️ Xato: {type(e).__name__}: {str(e)[:300]}")
+        logger.warning(f"deleteWebhook xato: {e}")
 
-    finally:
-        if img_path and os.path.exists(img_path):
-            os.remove(img_path)
-            logger.info(f"Rasm o'chirildi: {img_path}")
+    logger.info("Polling boshlandi...")
 
-@bot.message_handler(func=lambda message: True)
-def handle_other(message):
-    bot.reply_to(message, "📸 Iltimos, menga rasm yuboring. Faqat rasmlarga sharh yoza olaman!")
+    while True:
+        try:
+            params = {"timeout": 30, "limit": 100}
+            if offset is not None:
+                params["offset"] = offset
 
-# ===================== FLASK SERVERNI ISHGA TUSHIRISH =====================
+            resp = requests.get(f"{TG}/getUpdates", params=params, timeout=40)
+
+            if resp.status_code == 409:
+                logger.warning("409 Conflict — 10 soniya kutib qayta uriniladi...")
+                time.sleep(10)
+                # Yana tozalash
+                requests.post(f"{TG}/deleteWebhook", json={"drop_pending_updates": True}, timeout=10)
+                time.sleep(5)
+                continue
+
+            if not resp.ok:
+                logger.warning(f"getUpdates xato: {resp.status_code} — 5 soniya kutilmoqda")
+                time.sleep(5)
+                continue
+
+            updates = resp.json().get("result", [])
+
+            for update in updates:
+                try:
+                    handle_update(update)
+                except Exception as e:
+                    logger.error(f"Update qayta ishlashda xato: {e}")
+                offset = update["update_id"] + 1
+
+        except requests.exceptions.Timeout:
+            logger.info("Timeout — davom etilmoqda")
+            continue
+        except Exception as e:
+            logger.error(f"Polling xato: {e} — 5 soniya kutilmoqda")
+            time.sleep(5)
+
+# ===================== FLASK =====================
 def run_flask():
     port = int(os.environ.get('PORT', 10000))
-    logger.info(f"Flask server {port}-portda ishga tushirilmoqda...")
+    logger.info(f"Flask {port}-portda ishga tushdi")
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
-# ===================== ASOSIY FUNKSIYA =====================
+# ===================== MAIN =====================
 if __name__ == '__main__':
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
-    logger.info("Flask server thread ishga tushdi.")
 
-    logger.info("Webhook o'chirilmoqda...")
-    bot.remove_webhook()
-    time.sleep(2)
-
-    logger.info("Bot polling rejimida ishga tushirilmoqda...")
-    bot.infinity_polling(
-        timeout=10,
-        long_polling_timeout=5,
-        logger_level=logging.INFO,
-        restart_on_change=False
-    )
+    polling_loop()
