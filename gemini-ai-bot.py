@@ -4,16 +4,18 @@ import google.generativeai as genai
 from PIL import Image
 import time
 
-# YANGI TOKENNI SHUYERGA QO'YING
-BOT_TOKEN = 'BU_YERGA_YANGI_TOKENNI_QO_YING'
+# @BotFather bergan YANGI tokenni shu yerga qo'ying
+BOT_TOKEN = 'BU_YERGA_YANGI_TOKENINGIZNI_QO_YING'
 GEMINI_API_KEY = 'AIzaSyAt10c_-oKeN-1gIeTk9frpA9xuUFesPhI'
 
+# Google AI modelini v1 standartiga majburlash (404 xatosini oldini oladi)
 os.environ["GOOGLE_API_VERSION"] = "v1"
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+# Eski webhooklar qolib ketgan bo'lsa majburan o'chirish
 try:
     bot.delete_webhook(drop_pending_updates=True)
     time.sleep(1)
@@ -26,7 +28,7 @@ if not os.path.exists(DOWNLOAD_DIR):
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Salom! Bot qayta tiklandi va noldan ishga tushdi. Rasm yuboring! 😎")
+    bot.reply_to(message, "Salom! Bot muvaffaqiyatli yangilandi va noldan ishga tushdi. 😎\nMenga rasm yuboring, prikol ta'rif yozib beraman!")
 
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
@@ -34,6 +36,7 @@ def handle_photo(message):
     status_msg = bot.reply_to(message, "AI rasmni tahlil qilyapti... 🤔")
 
     try:
+        # Rasmni yuklab olish
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         
@@ -41,24 +44,27 @@ def handle_photo(message):
         with open(local_path, 'wb') as new_file:
             new_file.write(downloaded_file)
 
+        # Rasmni ochish va AI'ga yuborish
         img = Image.open(local_path)
-        prompt = "Ushbu rasmga qarab, o'zbek tilida qisqa, prikol, hazilomuz ta'rif yozib ber."
+        prompt = "Ushbu rasmga qarab, rasm egasini kuldiradigan, juda qiziqarli, hazilomuz prikol ta'rif yoki qisqa she'r yozib ber. Faqat o'zbek tilida bo'lsin."
         
         response = model.generate_content([prompt, img])
         ai_reply = response.text
 
+        # Natijani foydalanuvchiga qaytarish
         bot.delete_message(chat_id, status_msg.message_id)
-        bot.reply_to(message, f"📸 **Gemini AI:**\n\n{ai_reply}")
+        bot.reply_to(message, f"📸 **Gemini AI sharhi:**\n\n{ai_reply}")
 
         if os.path.exists(local_path):
             os.remove(local_path)
 
     except Exception as e:
         try:
-            bot.edit_message_text(f"Xatolik: {str(e)}", chat_id, status_msg.message_id)
+            bot.edit_message_text(f"Xatolik yuz berdi: {str(e)}", chat_id, status_msg.message_id)
         except:
             pass
 
 if __name__ == "__main__":
-    print("Bot ishga tushmoqda...")
+    print("Bot muvaffaqiyatli ishga tushdi...")
+    # Infinity polling ulanish uzilsa ham avtomatik qayta tiklanadi
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
