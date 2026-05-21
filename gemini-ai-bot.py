@@ -1,86 +1,144 @@
 import os
-import telebot
-import google.generativeai as genai
-from PIL import Image
-import time
-from flask import Flask
+import logging
 import threading
+import requests
+import google.generativeai as genai
+import telebot
+from flask import Flask
+from PIL import Image
 
-# @BotFather bergan YANGI toza tokeningizni shu yerga qo'ying
-BOT_TOKEN = '8822374451:AAEwpamwDeMsXYg9OED50SL1ACb0nV-M3X8' 
+# ===================== SOZLAMALAR =====================
+BOT_TOKEN = '8822374451:AAFkWvRHy_oXLZ4RXnKidJ0SrccI9qPksoI'
 GEMINI_API_KEY = 'AIzaSyAt10c_-oKeN-1gIeTk9frpA9xuUFesPhI'
 
-# Google AI sozlamalari
 os.environ["GOOGLE_API_VERSION"] = "v1"
+
+# ===================== LOGGING =====================
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# ===================== GEMINI SOZLASH =====================
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-bot = telebot.TeleBot(BOT_TOKEN)
+# ===================== TELEGRAM BOT =====================
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode=None)
 
-try:
-    bot.delete_webhook(drop_pending_updates=True)
-    time.sleep(1)
-except:
-    pass
-
-DOWNLOAD_DIR = "downloads"
-if not os.path.exists(DOWNLOAD_DIR):
-    os.makedirs(DOWNLOAD_DIR)
-
-# Render yopilib qolmasligi uchun majburiy Flask server qismi
-app = Flask('')
+# ===================== FLASK SERVER =====================
+app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot muvaffaqiyatli ishlamoqda!", 200
+    return "Bot ishlayapti!", 200
 
-def run_flask():
-    # Render talab qilayotgan portni majburan ochib beramiz
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+@app.route('/health')
+def health():
+    return "OK", 200
 
-@bot.message_handler(commands=['start'])
+# ===================== DOWNLOADS PAPKASI =====================
+DOWNLOAD_DIR = "downloads"
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+# ===================== YORDAMCHI FUNKSIYA =====================
+def download_photo(file_info, save_path):
+    """Telegram serveridan rasmni yuklab olish."""
+    file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
+    response = requests.get(file_url, timeout=30)
+    response.raise_for_status()
+    with open(save_path, 'wb') as f:
+        f.write(response.content)
+
+def analyze_image_with_gemini(image_path):
+    """Rasmni Gemini AI orqali tahlil qilish."""
+    img = Image.open(image_path)
+    prompt = (
+        "Siz o'zbek tilida ijodiy va kulgili sharhlar yozuvchi AI assistantsiz. "
+        "Ushbu rasmga qarab, o'zbek tilida qisqa, qiziqarli va hazilomuz bir sharh yozing. "
+        "Sharh 2-4 jumladan iborat bo'lsin, jonli va o'qimishli bo'lsin. "
+        "Faqat sharhni yozing, boshqa narsa yozmang."
+    )
+    response = model.generate_content([prompt, img])
+    return response.text.strip()
+
+# ===================== BOT HANDLERLAR =====================
+@bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "Salom! Men Gemini AI botman. Menga rasm yuboring, prikol ta'rif yozib beraman! 😎")
+    text = (
+        "👋 Salom! Men rasm tahlil qiluvchi botman.\n\n"
+        "📸 Menga istalgan rasm yuboring — men unga o'zbek tilida "
+        "qiziqarli va kulgili sharh yozib beraman! 😄"
+    )
+    bot.reply_to(message, text)
 
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
     chat_id = message.chat.id
-    status_msg = bot.reply_to(message, "AI rasmni tahlil qilyapti... 🤔")
+    img_path = None
 
     try:
-        file_info = bot.get_file(message.photo[-1].file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
-        
-        local_path = f"{DOWNLOAD_DIR}/{chat_id}.jpg"
-        with open(local_path, 'wb') as new_file:
-            new_file.write(downloaded_file)
+        bot.send_chat_action(chat_id, 'typing')
+        bot.reply_to(message, "🔍 Rasm tahlil qilinmoqda, bir oz kuting...")
 
-        img = Image.open(local_path)
-        prompt = "Ushbu rasmga qarab, rasm egasini kuldiradigan, juda qiziqarli, hazilomuz prikol ta'rif yoki qisqa she'r yozib ber. Faqat o'zbek tilida bo'lsin."
-        
-        response = model.generate_content([prompt, img])
-        ai_reply = response.text
+        # Eng yuqori sifatli rasmni olish
+        photo = message.photo[-1]
+        file_info = bot.get_file(photo.file_id)
 
-        bot.delete_message(chat_id, status_msg.message_id)
-        bot.reply_to(message, f"📸 **Gemini AI sharhi:**\n\n{ai_reply}")
+        # Rasmni yuklab olish
+        img_path = os.path.join(DOWNLOAD_DIR, f"{photo.file_id}.jpg")
+        download_photo(file_info, img_path)
+        logger.info(f"Rasm yuklandi: {img_path}")
 
-        if os.path.exists(local_path):
-            os.remove(local_path)
+        # Gemini bilan tahlil qilish
+        comment = analyze_image_with_gemini(img_path)
+        logger.info(f"Gemini javobi: {comment}")
+
+        bot.reply_to(message, f"🤖 {comment}")
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Rasm yuklashda xato: {e}")
+        bot.reply_to(message, "❌ Rasmni yuklab bo'lmadi. Iltimos, qayta urinib ko'ring.")
 
     except Exception as e:
-        try:
-            bot.edit_message_text(f"Xatolik yuz berdi: {str(e)}", chat_id, status_msg.message_id)
-        except:
-            pass
+        logger.error(f"Xato yuz berdi: {e}")
+        bot.reply_to(message, "⚠️ Xatolik yuz berdi. Iltimos, keyinroq urinib ko'ring.")
 
-if __name__ == "__main__":
-    print("Render uchun veb-server ishga tushmoqda...")
-    # Flaskni alohida oqimda (thread) yurgizamiz, u portni ushlab turadi
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
+    finally:
+        # Rasmni o'chirish (disk to'lib qolmasligi uchun)
+        if img_path and os.path.exists(img_path):
+            os.remove(img_path)
+            logger.info(f"Rasm o'chirildi: {img_path}")
+
+@bot.message_handler(func=lambda message: True)
+def handle_other(message):
+    bot.reply_to(
+        message,
+        "📸 Iltimos, menga rasm yuboring. Faqat rasmlarga sharh yoza olaman!"
+    )
+
+# ===================== FLASK SERVERNI ISHGA TUSHIRISH =====================
+def run_flask():
+    port = int(os.environ.get('PORT', 10000))
+    logger.info(f"Flask server {port}-portda ishga tushirilmoqda...")
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+# ===================== ASOSIY FUNKSIYA =====================
+if __name__ == '__main__':
+    # Flask serverni alohida thread'da ishga tushirish
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
-    
-    print("Telegram bot liniyasi ochilmoqda...")
-    # Bot tinimsiz xabarlarni tekshiradi
-    bot.infinity_polling(timeout=10, long_polling_timeout=5)
+    logger.info("Flask server thread ishga tushdi.")
+
+    # Eski webhook'ni tozalash (409 Conflict oldini olish)
+    logger.info("Webhook o'chirilmoqda...")
+    bot.remove_webhook()
+
+    logger.info("Telegram bot polling rejimida ishga tushirilmoqda...")
+    bot.infinity_polling(
+        timeout=10,
+        long_polling_timeout=5,
+        logger_level=logging.INFO,
+        restart_on_change=False
+    )
