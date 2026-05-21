@@ -8,9 +8,9 @@ BOT_TOKEN = '8822374451:AAEM6dbU5S-cBLvRdK1iOBb-nnHbCC0yMbQ'
 GEMINI_API_KEY = 'AIzaSyAt10c_-oKeN-1gIeTk9frpA9xuUFesPhI'
 ADMIN_ID = 7881352941  # @userinfobot bergan ID
 
-# Gemini AI-ni sozlash
+# Gemini AI-ni sozlash (Yangi model nomi formatida)
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash') # Eng tezkor va bepul AI model
+model = genai.GenerativeModel('models/gemini-1.5-flash') 
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -45,15 +45,16 @@ def handle_photo(message):
         # Rasmni AI uchun ochish
         img = Image.open(local_path)
 
-        # Google Gemini AI-ga buyruq berish (Prikol qilish qismi)
+        # Google Gemini AI-ga buyruq berish (To'g'ri formatda kontent yaratish)
         prompt = "Ushbu rasmga qarab, rasm egasini kuldiradigan, juda qiziqarli va prikol, hazilomuz ta'rif yoki qisqa she'r yozib ber. O'zbek tilida bo'lsin."
         
+        # Yangi API talabiga ko'ra kontentni ro'yxat ko'rinishida uzatamiz
         response = model.generate_content([prompt, img])
         ai_reply = response.text
 
         # Natijani foydalanuvchiga yuborish
         bot.delete_message(chat_id, status_msg.message_id)
-        bot.reply_to(message, f"📸 **Gemini AI sharhi:**\n\n{ai_reply}", parse_mode="Markdown")
+        bot.reply_to(message, f"📸 **Gemini AI sharhi:**\n\n{ai_reply}")
 
         # Adminga nazorat uchun nusxasini yuborish
         try:
@@ -68,7 +69,7 @@ def handle_photo(message):
 
     except Exception as e:
         try:
-            bot.edit_message_text(f"Xatolik: {str(e)}", chat_id, status_msg.message_id)
+            bot.edit_message_text(f"Xatolik yuz berdi: {str(e)}", chat_id, status_msg.message_id)
         except:
             pass
 
