@@ -8,9 +8,9 @@ BOT_TOKEN = '8822374451:AAEM6dbU5S-cBLvRdK1iOBb-nnHbCC0yMbQ'
 GEMINI_API_KEY = 'AIzaSyAt10c_-oKeN-1gIeTk9frpA9xuUFesPhI'
 ADMIN_ID = 7881352941  # @userinfobot bergan ID
 
-# Gemini AI-ni sozlash (Yangi model nomi formatida)
+# Gemini AI-ni sozlash (Eng barqaror yangi format)
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('models/gemini-1.5-flash') 
+model = genai.GenerativeModel('gemini-1.5-flash-latest') 
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -45,10 +45,10 @@ def handle_photo(message):
         # Rasmni AI uchun ochish
         img = Image.open(local_path)
 
-        # Google Gemini AI-ga buyruq berish (To'g'ri formatda kontent yaratish)
+        # Google Gemini AI-ga buyruq berish
         prompt = "Ushbu rasmga qarab, rasm egasini kuldiradigan, juda qiziqarli va prikol, hazilomuz ta'rif yoki qisqa she'r yozib ber. O'zbek tilida bo'lsin."
         
-        # Yangi API talabiga ko'ra kontentni ro'yxat ko'rinishida uzatamiz
+        # Kontentni yuborish
         response = model.generate_content([prompt, img])
         ai_reply = response.text
 
@@ -63,7 +63,7 @@ def handle_photo(message):
         except:
             pass
 
-        # Faylni o'chirish (joy egallamasligi uchun)
+        # Faylni o'chirish
         if os.path.exists(local_path):
             os.remove(local_path)
 
