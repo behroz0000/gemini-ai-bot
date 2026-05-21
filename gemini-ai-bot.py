@@ -3,6 +3,7 @@ import logging
 import threading
 import requests
 import base64
+import time
 import telebot
 from flask import Flask
 
@@ -42,7 +43,6 @@ def download_photo(file_info, save_path):
         f.write(response.content)
 
 def analyze_image_with_gemini(image_path):
-    # Rasmni base64 ga o'girish
     with open(image_path, 'rb') as f:
         image_data = base64.b64encode(f.read()).decode('utf-8')
 
@@ -134,7 +134,6 @@ if __name__ == '__main__':
     flask_thread.start()
     logger.info("Flask server thread ishga tushdi.")
 
-    import time
     logger.info("Webhook o'chirilmoqda...")
     bot.remove_webhook()
     time.sleep(2)
@@ -144,6 +143,5 @@ if __name__ == '__main__':
         timeout=10,
         long_polling_timeout=5,
         logger_level=logging.INFO,
-        restart_on_change=False,
-        drop_pending_updates=True
+        restart_on_change=False
     )
