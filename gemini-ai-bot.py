@@ -1,10 +1,8 @@
 import os
 import logging
-import threading
 import requests
 import base64
-import time
-from flask import Flask
+from flask import Flask, request, jsonify
 
 # ===================== SOZLAMALAR =====================
 BOT_TOKEN = '8822374451:AAH44tO2fOxgLgxNLw_pIazWFh1u0NTb82c'
@@ -12,20 +10,15 @@ GEMINI_API_KEY = 'AIzaSyAt10c_-oKeN-1gIeTk9frpA9xuUFesPhI'
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
 TG = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
+# Render URL — https://gemini-ai-bot-v4mb.onrender.com
+WEBHOOK_URL = f"https://gemini-ai-bot-v4mb.onrender.com/{BOT_TOKEN}"
+
 # ===================== LOGGING =====================
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ===================== FLASK SERVER =====================
+# ===================== FLASK =====================
 app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot ishlayapti!", 200
-
-@app.route('/health')
-def health():
-    return "OK", 200
 
 # ===================== DOWNLOADS PAPKASI =====================
 DOWNLOAD_DIR = "downloads"
@@ -38,22 +31,11 @@ def tg_send(chat_id, text):
     except Exception as e:
         logger.error(f"sendMessage xato: {e}")
 
-def tg_action(chat_id, action="typing"):
+def tg_action(chat_id):
     try:
-        requests.post(f"{TG}/sendChatAction", json={"chat_id": chat_id, "action": action}, timeout=5)
+        requests.post(f"{TG}/sendChatAction", json={"chat_id": chat_id, "action": "typing"}, timeout=5)
     except:
         pass
-
-def tg_get_file(file_id):
-    resp = requests.get(f"{TG}/getFile", params={"file_id": file_id}, timeout=10)
-    return resp.json()["result"]["file_path"]
-
-def tg_download(file_path, save_path):
-    url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
-    resp = requests.get(url, timeout=30)
-    resp.raise_for_status()
-    with open(save_path, 'wb') as f:
-        f.write(resp.content)
 
 # ===================== GEMINI =====================
 def analyze_image(image_path):
@@ -78,108 +60,99 @@ def analyze_image(image_path):
     resp.raise_for_status()
     return resp.json()['candidates'][0]['content']['parts'][0]['text'].strip()
 
-# ===================== UPDATE QAYTA ISHLASH =====================
-def handle_update(update):
-    message = update.get("message", {})
-    chat_id = message.get("chat", {}).get("id")
-    if not chat_id:
-        return
-
-    text = message.get("text", "")
-    photos = message.get("photo", [])
-
-    if text in ["/start", "/help"]:
-        tg_send(chat_id,
-            "👋 Salom! Men rasm tahlil qiluvchi botman.\n\n"
-            "📸 Menga istalgan rasm yuboring — men unga o'zbek tilida "
-            "qiziqarli va kulgili sharh yozib beraman! 😄"
-        )
-        return
-
-    if photos:
-        img_path = None
-        try:
-            tg_action(chat_id)
-            tg_send(chat_id, "🔍 Rasm tahlil qilinmoqda, bir oz kuting...")
-
-            photo = photos[-1]
-            file_path = tg_get_file(photo["file_id"])
-            img_path = os.path.join(DOWNLOAD_DIR, f"{photo['file_id']}.jpg")
-            tg_download(file_path, img_path)
-
-            comment = analyze_image(img_path)
-            tg_send(chat_id, f"🤖 {comment}")
-
-        except Exception as e:
-            logger.error(f"Xato: {type(e).__name__}: {e}")
-            tg_send(chat_id, f"⚠️ Xato: {type(e).__name__}: {str(e)[:200]}")
-        finally:
-            if img_path and os.path.exists(img_path):
-                os.remove(img_path)
-        return
-
-    tg_send(chat_id, "📸 Iltimos, menga rasm yuboring. Faqat rasmlarga sharh yoza olaman!")
-
-# ===================== POLLING =====================
-def polling_loop():
-    offset = None
-
-    # Boshlashda eski sessiyalarni tozalash
+# ===================== WEBHOOK ENDPOINT =====================
+@app.route(f'/{BOT_TOKEN}', methods=['POST'])
+def webhook():
     try:
-        requests.post(f"{TG}/deleteWebhook", json={"drop_pending_updates": True}, timeout=10)
-        logger.info("Webhook o'chirildi, eski updatelar tozalandi.")
-        time.sleep(3)
+        update = request.get_json()
+        if not update:
+            return jsonify({"ok": True})
+
+        message = update.get("message", {})
+        chat_id = message.get("chat", {}).get("id")
+        if not chat_id:
+            return jsonify({"ok": True})
+
+        text = message.get("text", "")
+        photos = message.get("photo", [])
+
+        # /start yoki /help
+        if text in ["/start", "/help"]:
+            tg_send(chat_id,
+                "👋 Salom! Men rasm tahlil qiluvchi botman.\n\n"
+                "📸 Menga istalgan rasm yuboring — men unga o'zbek tilida "
+                "qiziqarli va kulgili sharh yozib beraman! 😄"
+            )
+            return jsonify({"ok": True})
+
+        # Rasm
+        if photos:
+            img_path = None
+            try:
+                tg_action(chat_id)
+                tg_send(chat_id, "🔍 Rasm tahlil qilinmoqda, bir oz kuting...")
+
+                photo = photos[-1]
+                file_resp = requests.get(f"{TG}/getFile", params={"file_id": photo["file_id"]}, timeout=10)
+                file_path = file_resp.json()["result"]["file_path"]
+
+                file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+                img_resp = requests.get(file_url, timeout=30)
+                img_resp.raise_for_status()
+
+                img_path = os.path.join(DOWNLOAD_DIR, f"{photo['file_id']}.jpg")
+                with open(img_path, 'wb') as f:
+                    f.write(img_resp.content)
+
+                comment = analyze_image(img_path)
+                tg_send(chat_id, f"🤖 {comment}")
+
+            except Exception as e:
+                logger.error(f"Xato: {type(e).__name__}: {e}")
+                tg_send(chat_id, f"⚠️ Xato: {type(e).__name__}: {str(e)[:200]}")
+            finally:
+                if img_path and os.path.exists(img_path):
+                    os.remove(img_path)
+
+            return jsonify({"ok": True})
+
+        # Boshqa xabarlar
+        tg_send(chat_id, "📸 Iltimos, menga rasm yuboring. Faqat rasmlarga sharh yoza olaman!")
+
     except Exception as e:
-        logger.warning(f"deleteWebhook xato: {e}")
+        logger.error(f"Webhook xato: {e}")
 
-    logger.info("Polling boshlandi...")
+    return jsonify({"ok": True})
 
-    while True:
-        try:
-            params = {"timeout": 30, "limit": 100}
-            if offset is not None:
-                params["offset"] = offset
+# ===================== HEALTH CHECK =====================
+@app.route('/')
+def home():
+    return "Bot ishlayapti!", 200
 
-            resp = requests.get(f"{TG}/getUpdates", params=params, timeout=40)
+@app.route('/health')
+def health():
+    return "OK", 200
 
-            if resp.status_code == 409:
-                logger.warning("409 Conflict — 10 soniya kutib qayta uriniladi...")
-                time.sleep(10)
-                # Yana tozalash
-                requests.post(f"{TG}/deleteWebhook", json={"drop_pending_updates": True}, timeout=10)
-                time.sleep(5)
-                continue
+# ===================== WEBHOOK O'RNATISH =====================
+@app.route('/set_webhook')
+def set_webhook():
+    resp = requests.post(f"{TG}/setWebhook", json={"url": WEBHOOK_URL})
+    return jsonify(resp.json())
 
-            if not resp.ok:
-                logger.warning(f"getUpdates xato: {resp.status_code} — 5 soniya kutilmoqda")
-                time.sleep(5)
-                continue
-
-            updates = resp.json().get("result", [])
-
-            for update in updates:
-                try:
-                    handle_update(update)
-                except Exception as e:
-                    logger.error(f"Update qayta ishlashda xato: {e}")
-                offset = update["update_id"] + 1
-
-        except requests.exceptions.Timeout:
-            logger.info("Timeout — davom etilmoqda")
-            continue
-        except Exception as e:
-            logger.error(f"Polling xato: {e} — 5 soniya kutilmoqda")
-            time.sleep(5)
-
-# ===================== FLASK =====================
-def run_flask():
-    port = int(os.environ.get('PORT', 10000))
-    logger.info(f"Flask {port}-portda ishga tushdi")
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+@app.route('/webhook_info')
+def webhook_info():
+    resp = requests.get(f"{TG}/getWebhookInfo")
+    return jsonify(resp.json())
 
 # ===================== MAIN =====================
 if __name__ == '__main__':
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
+    # Webhook o'rnatish
+    try:
+        resp = requests.post(f"{TG}/setWebhook", json={"url": WEBHOOK_URL}, timeout=10)
+        logger.info(f"Webhook o'rnatildi: {resp.json()}")
+    except Exception as e:
+        logger.error(f"Webhook o'rnatishda xato: {e}")
 
-    polling_loop()
+    port = int(os.environ.get('PORT', 10000))
+    logger.info(f"Flask {port}-portda ishga tushdi")
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
