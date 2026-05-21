@@ -2,47 +2,43 @@ import os
 import telebot
 import google.generativeai as genai
 from PIL import Image
-import time
-from flask import Flask
-import threading
-import requests
+from flask import Flask, request
 
 # Kalitlar
 BOT_TOKEN = '8822374451:AAEwpamwDeMsXYg9OED50SL1ACb0nV-M3X8'
 GEMINI_API_KEY = 'AIzaSyAt10c_-oKeN-1gIeTk9frpA9xuUFesPhI'
-ADMIN_ID = 7881352941
 
 # Google API sozlamalari (404 xatosini yo'qotish uchun)
 os.environ["GOOGLE_API_VERSION"] = "v1"
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# !!! 409 CONFLICT XATOSINI ILDIZI BILAN YO'Q QILISH !!!
-# Yangi konteyner ishga tushishdan oldin Telegram serverlaridagi eski faol seansni API orqali majburlab yopadi
-def close_old_session():
-    print("Eski Telegram seanslarini yopish so'rovi yuborilmoqda...")
-    try:
-        # 1. Webhookni tozalash
-        requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url=")
-        # 2. Eski ochiq qolgan polling tizimlarini majburiy yopish
-        res = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/close")
-        print("Telegram javobi:", res.json())
-        time.sleep(3)  # Liniya to'liq bo'shashi uchun kutish
-    except Exception as e:
-        print("Seansni yopishda xato:", e)
-
-# Botni ishga tushirishdan oldin eski liniyani majburlab uzamiz
-close_old_session()
-
 bot = telebot.TeleBot(BOT_TOKEN)
+app = Flask('')
+
+# Render bergan rasmiy URL manzilingiz
+WEBHOOK_URL = 'https://gemini-ai-bot-v4mb.onrender.com'
 
 DOWNLOAD_DIR = "downloads"
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
 
+# Telegramdan keladigan xabarlarni qabul qiluvchi eshik (Route)
+@app.route(f'/{BOT_TOKEN}', methods=['POST'])
+def getMessage():
+    json_string = request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_string)
+    bot.process_new_updates([update])
+    return "!", 200
+
+@app.route('/')
+def home():
+    return "Bot Webhook tizimida faol!", 200
+
+# Bot komandalari va xizmatlari
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Salom! Men Google Gemini AI botman. 😎\nMenga rasm yuboring, prikol ta'rif yozib beraman!")
+    bot.reply_to(message, "Salom! Men Webhook rejimida ishlaydigan aqlli Gemini AI botman. 😎\nMenga rasm yuboring, prikol ta'rif yozib beraman!")
 
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
@@ -75,19 +71,16 @@ def handle_photo(message):
         except:
             pass
 
-# Render majburiy porti uchun Flask
-app = Flask('')
-@app.route('/')
-def home(): return "Bot Active"
-
-def run_flask():
-    app.run(host='0.0.0.0', port=os.environ.get('PORT', 8080))
-
 if __name__ == "__main__":
-    print("Google Gemini AI Bot ishga tushdi...")
-    t = threading.Thread(target=run_flask)
-    t.daemon = True
-    t.start()
+    print("Eski polling seanslari tozalanmoqda...")
+    bot.remove_webhook()
+    import time
+    time.sleep(1)
     
-    # Konfliktlarsiz ishlash rejimi
-    bot.polling(none_stop=True, interval=3)
+    # Yangi webhook manzilini o'rnatish
+    print("Yangi webhook o'rnatilmoqda...")
+    bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    
+    # Serverni ishga tushirish
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
