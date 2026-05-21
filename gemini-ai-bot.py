@@ -4,7 +4,7 @@ import google.generativeai as genai
 from PIL import Image
 
 # Kalitlarni shu yerga kiriting
-BOT_TOKEN = '8822374451:AAEM6dbU5S-cBLvRdK1iOBb-nnHbCC0yMbQ'
+BOT_TOKEN = '8822374451:AAEwpamwDeMsXYg9OED50SL1ACb0nV-M3X8'
 GEMINI_API_KEY = 'AIzaSyAt10c_-oKeN-1gIeTk9frpA9xuUFesPhI'
 ADMIN_ID = 7881352941  # @userinfobot bergan ID
 
