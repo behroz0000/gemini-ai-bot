@@ -8,7 +8,7 @@ from flask import Flask
 from PIL import Image
 
 # ===================== SOZLAMALAR =====================
-BOT_TOKEN = '8822374451:AAFkWvRHy_oXLZ4RXnKidJ0SrccI9qPksoI'
+BOT_TOKEN = '8822374451:AAEMwFZcJcd1rZuNWL4rAyBcNwyTTsEit_4'
 GEMINI_API_KEY = 'AIzaSyAt10c_-oKeN-1gIeTk9frpA9xuUFesPhI'
 
 os.environ["GOOGLE_API_VERSION"] = "v1"
