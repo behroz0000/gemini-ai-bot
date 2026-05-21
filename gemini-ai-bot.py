@@ -3,7 +3,7 @@ import telebot
 import google.generativeai as genai
 from PIL import Image
 
-# Kalitlarni shu yerga kiriting
+# Yangilangan yangi tokeningiz shu yerda
 BOT_TOKEN = '8822374451:AAEwpamwDeMsXYg9OED50SL1ACb0nV-M3X8'
 GEMINI_API_KEY = 'AIzaSyAt10c_-oKeN-1gIeTk9frpA9xuUFesPhI'
 ADMIN_ID = 7881352941  # @userinfobot bergan ID
@@ -11,7 +11,7 @@ ADMIN_ID = 7881352941  # @userinfobot bergan ID
 # Gemini AI-ni sozlash
 genai.configure(api_key=GEMINI_API_KEY)
 
-# !!! XATOLIKNI DAVOLASH: API versiyasini v1 ga majburlaymiz va model nomini to'liq yozamiz
+# Google API tizimidagi versiya chalkashliklarini chetlab o'tish uchun to'liq model nomi
 model = genai.GenerativeModel(
     model_name='models/gemini-1.5-flash-latest'
 )
