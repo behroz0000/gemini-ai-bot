@@ -1,0 +1,4 @@
+pyTelegramBotAPI
+Pillow
+google-generativeai
+Flask
