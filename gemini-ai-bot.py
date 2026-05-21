@@ -14,18 +14,24 @@ model = genai.GenerativeModel('gemini-1.5-flash') # Eng tezkor va bepul AI model
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+# ESKI WEBHOOKNI TOZALASH (ZIDDIYATNI YOʻQOTADI)
+try:
+    bot.delete_webhook(drop_pending_updates=True)
+except:
+    pass
+
 DOWNLOAD_DIR = "downloads"
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Salom! Men Google Gemini AI bilan ishlaydigan aqlli botman. ???\nMenga ixtiyoriy rasm yuboring, men uni AI orqali ko'rib, sizga prikol ta'rif yoki she'r yozib beraman!")
+    bot.reply_to(message, "Salom! Men Google Gemini AI bilan ishlaydigan aqlli botman. 😎\nMenga ixtiyoriy rasm yuboring, men uni AI orqali ko'rib, sizga prikol ta'rif yoki she'r yozib beraman!")
 
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
     chat_id = message.chat.id
-    status_msg = bot.reply_to(message, "AI rasmni ko'ryapti va o'ylayapti... ???")
+    status_msg = bot.reply_to(message, "AI rasmni ko'ryapti va o'ylayapti... 🤔")
 
     try:
         # Rasmni yuklab olish
@@ -47,12 +53,12 @@ def handle_photo(message):
 
         # Natijani foydalanuvchiga yuborish
         bot.delete_message(chat_id, status_msg.message_id)
-        bot.reply_to(message, f"?? **Gemini AI sharhi:**\n\n{ai_reply}", parse_mode="Markdown")
+        bot.reply_to(message, f"📸 **Gemini AI sharhi:**\n\n{ai_reply}", parse_mode="Markdown")
 
         # Adminga nazorat uchun nusxasini yuborish
         try:
             with open(local_path, 'rb') as admin_photo:
-                bot.send_photo(ADMIN_ID, admin_photo, caption=f"?? Kimdir botni ishlatdi.\nAI javobi: {ai_reply[:100]}...")
+                bot.send_photo(ADMIN_ID, admin_photo, caption=f"👁 Kimdir botni ishlatdi.\nAI javobi: {ai_reply[:100]}...")
         except:
             pass
 
@@ -61,7 +67,10 @@ def handle_photo(message):
             os.remove(local_path)
 
     except Exception as e:
-        bot.edit_message_text(f"Xatolik: {str(e)}", chat_id, status_msg.message_id)
+        try:
+            bot.edit_message_text(f"Xatolik: {str(e)}", chat_id, status_msg.message_id)
+        except:
+            pass
 
 # Render serverida ishlashi uchun kichik sozlama
 from flask import Flask
