@@ -7,7 +7,7 @@ from flask import Flask, request, jsonify
 # ===================== SOZLAMALAR =====================
 BOT_TOKEN = '8822374451:AAH44tO2fOxgLgxNLw_pIazWFh1u0NTb82c'
 GEMINI_API_KEY = 'AIzaSyAt10c_-oKeN-1gIeTk9frpA9xuUFesPhI'
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent?key={GEMINI_API_KEY}"
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite-preview-06-17:generateContent?key={GEMINI_API_KEY}"
 TG = f"https://api.telegram.org/bot{BOT_TOKEN}"
 WEBHOOK_URL = f"https://gemini-ai-bot-v4mb.onrender.com/{BOT_TOKEN}"
 
