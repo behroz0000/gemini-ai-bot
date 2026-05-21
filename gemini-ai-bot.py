@@ -4,23 +4,20 @@ import google.generativeai as genai
 from PIL import Image
 import time
 
-# Kalitlar
+# Kalitlar (Sizning oxirgi tasdiqlangan tokeningiz)
 BOT_TOKEN = '8822374451:AAEwpamwDeMsXYg9OED50SL1ACb0nV-M3X8'
 GEMINI_API_KEY = 'AIzaSyAt10c_-oKeN-1gIeTk9frpA9xuUFesPhI'
-ADMIN_ID = 7881352941  # @userinfobot bergan ID
-
-# !!! UZIL-KESIL YECHIM: API tizimini eski v1beta'dan eng yangi va barqaror v1 versiyaga majburlaymiz
-os.environ["GOOGLE_API_VERSION"] = "v1"
+ADMIN_ID = 7881352941
 
 # Gemini AI-ni sozlash
 genai.configure(api_key=GEMINI_API_KEY)
 
-# v1 tizimida ishlaydigan eng tezkor multimodal model
+# Eng barqaror universal model turi
 model = genai.GenerativeModel('gemini-1.5-flash')
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Eski webhook va ulanishlarni tozalash (409 xatosini oldini olish uchun)
+# Eski webhooklarni majburiy o'chirish (Conflict xatosini oldini oladi)
 try:
     bot.remove_webhook()
     bot.delete_webhook(drop_pending_updates=True)
@@ -34,15 +31,15 @@ if not os.path.exists(DOWNLOAD_DIR):
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Salom! Men Google Gemini AI bilan ishlaydigan aqlli botman. 😎\nMenga ixtiyoriy rasm yuboring, men uni AI orqali ko'rib, sizga prikol ta'rif yoki she'r yozib beraman!")
+    bot.reply_to(message, "Salom! Men Google Gemini AI botman. 😎\nMenga rasm yuboring, men uni ko'rib prikol ta'rif yozaman!")
 
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
     chat_id = message.chat.id
-    status_msg = bot.reply_to(message, "AI rasmni ko'ryapti va o'ylayapti... 🤔")
+    status_msg = bot.reply_to(message, "AI rasmni tahlil qilyapti... 🤔")
 
     try:
-        # Rasmni yuklab olish
+        # Rasmni yuklab olish qismi
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         
@@ -53,25 +50,18 @@ def handle_photo(message):
         # Rasmni ochish
         img = Image.open(local_path)
 
-        # Google Gemini AI-ga so'rov yuborish
-        prompt = "Ushbu rasmga qarab, rasm egasini kuldiradigan, juda qiziqarli va prikol, hazilomuz ta'rif yoki qisqa she'r yozib ber. O'zbek tilida bo'lsin."
+        # !!! GOOGLE STANDARTI: Rasm va matnni to'g'ri uzatish formati
+        prompt = "Ushbu rasmga qarab, rasm egasini kuldiradigan, juda qiziqarli, hazilomuz prikol ta'rif yoki qisqa she'r yozib ber. Faqat o'zbek tilida bo'lsin."
         
-        # Kontentni yuborish
+        # generate_content ichida argumentlar ro'yxat shaklida toza ketishi shart
         response = model.generate_content([prompt, img])
         ai_reply = response.text
 
-        # Natijani yuborish
+        # Natijani foydalanuvchiga qaytarish
         bot.delete_message(chat_id, status_msg.message_id)
         bot.reply_to(message, f"📸 **Gemini AI sharhi:**\n\n{ai_reply}")
 
-        # Adminga nusxa yuborish
-        try:
-            with open(local_path, 'rb') as admin_photo:
-                bot.send_photo(ADMIN_ID, admin_photo, caption=f"👁 Kimdir botni ishlatdi.\nAI javobi: {ai_reply[:100]}...")
-        except:
-            pass
-
-        # Rasmni xotiradan o'chirish
+        # Yuklangan vaqtinchalik faylni o'chirish
         if os.path.exists(local_path):
             os.remove(local_path)
 
@@ -81,7 +71,7 @@ def handle_photo(message):
         except:
             pass
 
-# Render uchun kichik Flask server
+# Render majburiy portni ushlashi uchun Flask server
 from flask import Flask
 app = Flask('')
 @app.route('/')
@@ -91,6 +81,4 @@ if __name__ == "__main__":
     print("Google Gemini AI Bot ishga tushdi...")
     import threading
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=os.environ.get('PORT', 8080))).start()
-    
-    # Konfliktlarsiz ishlash tartibi
-    bot.polling(none_stop=True, interval=2, timeout=20)
+    bot.polling(none_stop=True, interval=2)
