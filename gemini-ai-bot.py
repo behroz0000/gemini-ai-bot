@@ -11,12 +11,14 @@ ADMIN_ID = 7881352941  # @userinfobot bergan ID
 # Gemini AI-ni sozlash
 genai.configure(api_key=GEMINI_API_KEY)
 
-# !!! XATOLIKNI DAVOLASH: Eng barqaror va eski-yangi kutubxonalarga tushadigan universal model nomi
-model = genai.GenerativeModel('gemini-pro-vision') 
+# !!! XATOLIKNI DAVOLASH: API versiyasini v1 ga majburlaymiz va model nomini to'liq yozamiz
+model = genai.GenerativeModel(
+    model_name='models/gemini-1.5-flash-latest'
+)
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# ESKI WEBHOOKNI TOZALASH (ZIDDIYATNI YOʻQOTADI)
+# ESKI WEBHOOKNI TOZALASH
 try:
     bot.delete_webhook(drop_pending_updates=True)
 except:
