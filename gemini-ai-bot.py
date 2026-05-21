@@ -42,7 +42,7 @@ def health():
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-# ===================== YORDAMCHI FUNKSIYA =====================
+# ===================== YORDAMCHI FUNKSIYALAR =====================
 def download_photo(file_info, save_path):
     """Telegram serveridan rasmni yuklab olish."""
     file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
@@ -88,7 +88,9 @@ def handle_photo(message):
 
         # Rasmni yuklab olish
         img_path = os.path.join(DOWNLOAD_DIR, f"{photo.file_id}.jpg")
-        download_photo(file_info, img_path)
+        downloaded_file = bot.download_file(file_info.file_path)
+        with open(img_path, 'wb') as new_file:
+            new_file.write(downloaded_file)
         logger.info(f"Rasm yuklandi: {img_path}")
 
         # Gemini bilan tahlil qilish
@@ -97,13 +99,9 @@ def handle_photo(message):
 
         bot.reply_to(message, f"🤖 {comment}")
 
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Rasm yuklashda xato: {e}")
-        bot.reply_to(message, "❌ Rasmni yuklab bo'lmadi. Iltimos, qayta urinib ko'ring.")
-
     except Exception as e:
         logger.error(f"Xato yuz berdi: {e}")
-        bot.reply_to(message, "⚠️ Xatolik yuz berdi. Iltimos, keyinroq urinib ko'ring.")
+        bot.reply_to(message, "⚠️ Xatolik yuz berdi. Iltimos, qayta urinib ko'ring.")
 
     finally:
         # Rasmni o'chirish (disk to'lib qolmasligi uchun)
@@ -131,14 +129,18 @@ if __name__ == '__main__':
     flask_thread.start()
     logger.info("Flask server thread ishga tushdi.")
 
-    # Eski webhook'ni tozalash (409 Conflict oldini olish)
-    logger.info("Webhook o'chirilmoqda...")
-    bot.remove_webhook()
+    # 409 Conflict xatosini batamom yo'qotish uchun tozalash qismi
+    try:
+        logger.info("Eski ulanishlar va navbatdagi xabarlar tozalanmoqda...")
+        bot.delete_webhook(drop_pending_updates=True)
+        import time
+        time.sleep(1)
+    except Exception as e:
+        logger.error(f"Webhook tozalashda xatolik: {e}")
 
     logger.info("Telegram bot polling rejimida ishga tushirilmoqda...")
     bot.infinity_polling(
         timeout=10,
         long_polling_timeout=5,
-        logger_level=logging.INFO,
-        restart_on_change=False
+        logger_level=logging.INFO
     )
