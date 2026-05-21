@@ -3,11 +3,14 @@ import telebot
 import google.generativeai as genai
 from PIL import Image
 import time
+from flask import Flask
+import threading
 
-# O'ZINGIZNING TO'LIQ TOKENINGIZNI SHU YERGA QO'YING (IKKI NUQTA BILAN)
-BOT_TOKEN = '8822374451:AAFkWvRHy_oXLZ4RXnKidJ0SrccI9qPksoI' 
+# @BotFather bergan YANGI toza tokeningizni shu yerga qo'ying
+BOT_TOKEN = '8822374451:AAEwpamwDeMsXYg9OED50SL1ACb0nV-M3X8' 
 GEMINI_API_KEY = 'AIzaSyAt10c_-oKeN-1gIeTk9frpA9xuUFesPhI'
 
+# Google AI sozlamalari
 os.environ["GOOGLE_API_VERSION"] = "v1"
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
@@ -23,6 +26,18 @@ except:
 DOWNLOAD_DIR = "downloads"
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
+
+# Render yopilib qolmasligi uchun majburiy Flask server qismi
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot muvaffaqiyatli ishlamoqda!", 200
+
+def run_flask():
+    # Render talab qilayotgan portni majburan ochib beramiz
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -60,5 +75,12 @@ def handle_photo(message):
             pass
 
 if __name__ == "__main__":
-    print("Bot muvaffaqiyatli ishga tushdi...")
+    print("Render uchun veb-server ishga tushmoqda...")
+    # Flaskni alohida oqimda (thread) yurgizamiz, u portni ushlab turadi
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    
+    print("Telegram bot liniyasi ochilmoqda...")
+    # Bot tinimsiz xabarlarni tekshiradi
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
